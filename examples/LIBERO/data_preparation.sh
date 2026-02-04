@@ -25,7 +25,7 @@ for repo in \
   IPEC-COMMUNITY/libero_goal_no_noops_1.0.0_lerobot \
   IPEC-COMMUNITY/libero_10_no_noops_1.0.0_lerobot
 do
-  hf download "$repo" --repo-type dataset --local-dir "$DEST/libero/${repo##*/}"
+  hf download "$repo" --repo-type dataset --local-dir "$DEST/libero/${repo##*/}" --max-workers 8
 done
 
 hf download "StarVLA/LLaVA-OneVision-COCO" --repo-type dataset --local-dir "$DEST/LLaVA-OneVision-COCO"

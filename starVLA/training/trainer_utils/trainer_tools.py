@@ -498,3 +498,52 @@ import os
 def is_main_process():
     rank = int(os.environ.get("RANK", 0))  # if RANK is not set, default to 0
     return rank == 0
+
+def is_torch_npu_available(check_device=True) -> bool:
+    """Check if Ascend NPU is available for PyTorch operations.
+
+    Attempts to detect NPU availability by checking for the torch.npu module
+    and its is_available() function.
+
+    Args:
+        check_device : only check torch_npu package or strictly check if NPU device is available
+
+    Returns:
+        bool: True if NPU is available, False otherwise.
+    """
+    try:
+        if not hasattr(torch, "npu"):
+            return False
+
+        if check_device:
+            return torch.npu.is_available()
+        else:
+            return True
+    except ImportError:
+        return False
+
+is_cuda_available = torch.cuda.is_available()
+is_npu_available = is_torch_npu_available()
+
+def get_device_name() -> str:
+    """Get the device type string based on available accelerators.
+
+    Detects the available accelerator and returns the corresponding PyTorch
+    device type string. Currently supports CUDA, Ascend NPU, and CPU.
+
+    Returns:
+        str: Device type string ('cuda', 'npu', or 'cpu').
+    """
+    if is_cuda_available:
+        device = "cuda"
+    elif is_npu_available:
+        device = "npu"
+    else:
+        device = "cpu"
+    return device
+
+def adjust_attn_implementation(config: dict):
+    """Set the attn_implementation to hf when using npu.
+    """
+    if is_npu_available:
+        config.framework.qwenvl.attn_implementation = "hf"
