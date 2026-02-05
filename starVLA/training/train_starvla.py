@@ -10,7 +10,8 @@ Conventions:
 2. Use multiple dataloaders to adapt heterogeneous data types / task mixtures.  
 3. Put each training strategy in its own `trainer_*.py` file (avoid large if‑else chains).  
 """
-
+import warnings
+warnings.filterwarnings("error", message=r".*CUDA is not available.*")
 # Standard Library
 import argparse
 import json
@@ -39,8 +40,7 @@ from starVLA.training.trainer_utils.trainer_tools import normalize_dotlist_args
 from starVLA.model.framework import build_framework
 from starVLA.training.trainer_utils.trainer_tools import TrainerUtils
 from starVLA.training.trainer_utils.trainer_tools import build_param_lr_groups
-from starVLA.training.trainer_utils.trainer_tools import get_device_name
-from starVLA.training.trainer_utils.trainer_tools import  adjust_attn_implementation
+from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params
 from starVLA.training.trainer_utils.config_tracker import wrap_config, AccessTrackedConfig
 
 deepspeed_plugin = DeepSpeedPlugin()
@@ -432,7 +432,8 @@ class VLATrainer(TrainerUtils):
             self.optimizer.zero_grad()
 
             # VLA task forward propagation
-            with torch.autocast(get_device_name(), dtype=torch.bfloat16):
+            with torch.autocast(
+                **adjust_autocast_params("cuda", dtype=torch.bfloat16)):
                 output_dict = self.model.forward(batch_vla)
 
                 action_loss = output_dict["action_loss"]
@@ -517,7 +518,6 @@ if __name__ == "__main__":
 
     # Load YAML config & Convert CLI overrides to dotlist config
     cfg = OmegaConf.load(args.config_yaml)
-    adjust_attn_implementation(cfg)
     dotlist = normalize_dotlist_args(clipargs)  # Normalize CLI args to dotlist format
     cli_cfg = OmegaConf.from_dotlist(dotlist)
     cfg = OmegaConf.merge(cfg, cli_cfg)

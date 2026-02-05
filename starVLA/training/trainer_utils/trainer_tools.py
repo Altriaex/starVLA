@@ -542,8 +542,9 @@ def get_device_name() -> str:
         device = "cpu"
     return device
 
-def adjust_attn_implementation(config: dict):
-    """Set the attn_implementation to hf when using npu.
-    """
+def adjust_autocast_params(device_type, dtype):
+    # On npu, Autocast only supports torch.float16, torch.bfloat16 currently.
     if is_npu_available:
-        config.framework.qwenvl.attn_implementation = "hf"
+        return dict(device_type="npu", dtype=torch.float16 if not dtype==torch.bfloat16 else dtype)
+    else:
+        return dict(device_type=device_type, dtype=dtype)
