@@ -38,6 +38,7 @@ from starVLA.model.framework.base_framework import baseframework
 from starVLA.model.modules.vlm import get_vlm_model
 from starVLA.model.modules.action_model.GR00T_ActionHeader import get_action_model, FlowmatchingActionHead
 from starVLA.training.trainer_utils.trainer_tools import resize_images
+from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params
 from starVLA.model.tools import FRAMEWORK_REGISTRY
 
 
@@ -97,7 +98,7 @@ class Qwen_GR00T(baseframework):
 
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(**adjust_autocast_params(device_type="cuda", dtype=torch.bfloat16)):
             qwenvl_outputs = self.qwen_vl_interface(
                 **qwen_inputs,
                 output_attentions=False,
@@ -108,7 +109,7 @@ class Qwen_GR00T(baseframework):
             last_hidden = qwenvl_outputs.hidden_states[-1]   # [B, L, H]
 
         # Step 4: Action Expert Forward and Loss
-        with torch.autocast("cuda", dtype=torch.float32):
+        with torch.autocast(**adjust_autocast_params(device_type="cuda", dtype=torch.float32)):
             actions = torch.tensor(
                 np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
             )  # [B, T_full, action_dim]
@@ -161,7 +162,7 @@ class Qwen_GR00T(baseframework):
     
         # Step 1: QWenVL input format
         qwen_inputs = self.qwen_vl_interface.build_qwenvl_inputs(images=batch_images, instructions=instructions)
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.bfloat16)):
             qwenvl_outputs = self.qwen_vl_interface(
                 **qwen_inputs,
                 output_attentions=False,
@@ -175,7 +176,7 @@ class Qwen_GR00T(baseframework):
         state = torch.from_numpy(np.array(state)).to(last_hidden.device, dtype=last_hidden.dtype) if state is not None else None
         
         # Step 4: Action Expert Forward
-        with torch.autocast("cuda", dtype=torch.float32):
+        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.float32)):
             pred_actions = self.action_model.predict_action(last_hidden, state)  # (B, chunk_len, action_dim)
 
         normalized_actions = pred_actions.detach().cpu().numpy()

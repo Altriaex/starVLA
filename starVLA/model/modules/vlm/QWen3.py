@@ -30,6 +30,7 @@ _ACTION_TOKEN_MAX = 153716 # here only for fast_tokenizer, see starVLA/model/mod
 
 import torch.nn as nn
 
+from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params
 
 class _QWen3_VL_Interface(nn.Module):
     """
@@ -82,7 +83,7 @@ class _QWen3_VL_Interface(nn.Module):
         Forward pass delegating to underlying Qwen2.5-VL backbone.
         """
 
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.bfloat16)):
             outputs = self.model(
                 **kwargs,
             )
@@ -101,7 +102,7 @@ class _QWen3_VL_Interface(nn.Module):
         Returns:
             GenerateOutput | Model-dependent generation return.
         """
-        with torch.autocast("cuda", dtype=torch.float16):
+        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.float16)):
             generation_output = self.model.generate(
                 **kwargs,
             )
