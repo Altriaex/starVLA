@@ -64,7 +64,6 @@ def load_fast_tokenizer():
 
 def setup_directories(cfg) -> Path:
     """create output directory and save config"""
-    cfg.output_dir = os.path.join(cfg.run_root_dir, cfg.run_id)
     output_dir = Path(cfg.output_dir)
 
     if not dist.is_initialized() or dist.get_rank() == 0:
@@ -207,10 +206,9 @@ class VLATrainer(TrainerUtils):
         """initialize Weights & Biases"""
         if self.accelerator.is_main_process:
             wandb.init(
-                name=self.config.run_id,
+                name=self.config.exp_name,
                 dir=os.path.join(self.config.output_dir, "wandb"),
                 project=self.config.wandb_project,
-                entity=self.config.wandb_entity,
                 group="vla-train",
             )
 
