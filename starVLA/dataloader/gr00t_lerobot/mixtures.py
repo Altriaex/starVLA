@@ -28,11 +28,14 @@ DATASET_NAMED_MIXTURES = {
                 # ("libero_90_no_noops_lerobot", 1.0, "libero_franka"),
     ],
     "bridge": [
-        ("bridge_orig_1.0.0_lerobot", 1.0, "oxe_bridge"),
+        ("bridge_orig_lerobot", 1.0, "oxe_bridge"),
+    ],
+    "fractal": [
+        ("fractal20220817_data_lerobot", 1.0, "oxe_rt1"),
     ],
     "bridge_rt_1": [
-        ("bridge_orig_1.0.0_lerobot", 1.0, "oxe_bridge"),
-        ("fractal20220817_data_0.1.0_lerobot", 1.0, "oxe_rt1"),
+        ("bridge_orig_lerobot", 1.0, "oxe_bridge"),
+        ("fractal20220817_data_lerobot", 1.0, "oxe_rt1"),
     ],
 
     "demo_sim_pick_place": [
