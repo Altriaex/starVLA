@@ -7,6 +7,7 @@ import socket
 import argparse
 from deployment.model_server.tools.websocket_policy_server import WebsocketPolicyServer
 from starVLA.model.framework.base_framework import baseframework
+from starVLA.training.trainer_utils.trainer_tools import get_device_name
 import torch, os
 
 
@@ -22,7 +23,7 @@ def main(args) -> None:
 
     if args.use_bf16: # False
         vla = vla.to(torch.bfloat16)
-    vla = vla.to("cuda").eval()
+    vla = vla.to(get_device_name()).eval()
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
