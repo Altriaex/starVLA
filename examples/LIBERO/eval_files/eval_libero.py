@@ -4,10 +4,9 @@ import json
 import logging
 import math
 import os
-import pathlib
 from pathlib import Path
-import requests
 import time
+import pandas as pd
 
 import imageio
 import numpy as np
@@ -44,11 +43,9 @@ class Args:
     #################################################################################################################
     # Utils
     #################################################################################################################
-    video_out_path: str = "experiments/libero/logs"  # Path to save videos
+    output_dir: str = "experiments/libero/logs"  # Path to save videos
 
     seed: int = 7  # Random Seed (for reproducibility)
-
-    pretrained_path: str = ""
 
     post_process_action: bool = True
 
@@ -68,8 +65,8 @@ def eval_libero(args: Args) -> None:
     logging.info(f"Task suite: {args.task_suite_name}")
 
     # args.video_out_path = f"{date_base}+{args.job_name}"
-    
-    pathlib.Path(args.video_out_path).mkdir(parents=True, exist_ok=True)
+    video_dir = Path(args.output_dir) / "videos"
+    video_dir.mkdir(parents=True, exist_ok=True)
 
     if args.task_suite_name == "libero_spatial":
         max_steps = 220  # longest training demo has 193 steps
@@ -90,7 +87,7 @@ def eval_libero(args: Args) -> None:
         image_size=args.resize_size,
     )
 
-
+    eval_record = []
     # Start evaluation
     total_episodes, total_successes = 0, 0
     for task_id in tqdm.tqdm(range(num_tasks_in_suite)):
@@ -122,9 +119,9 @@ def eval_libero(args: Args) -> None:
 
             logging.info(f"Starting episode {task_episodes + 1}...")
             step = 0
-            
+
             # full_actions = np.load("./debug/action.npy")
-            
+
             while t < max_steps + args.num_steps_wait:
                 # try:
                 # IMPORTANT: Do nothing for the first few timesteps because the simulator drops objects
@@ -175,10 +172,10 @@ def eval_libero(args: Args) -> None:
                 
                 end_time = time.time()
                 # print(f"time: {end_time - start_time}")
-                
+
                 # # 
                 raw_action = response["raw_action"]
-                
+
                 world_vector_delta = np.asarray(raw_action.get("world_vector"), dtype=np.float32).reshape(-1)
                 rotation_delta = np.asarray(raw_action.get("rotation_delta"), dtype=np.float32).reshape(-1)
                 open_gripper = np.asarray(raw_action.get("open_gripper"), dtype=np.float32).reshape(-1)
@@ -196,7 +193,7 @@ def eval_libero(args: Args) -> None:
                     delta_action = np.concatenate([world_vector_delta, rotation_delta, gripper], axis=0)
 
                 full_actions.append(delta_action)
-                
+
                 # __import__("ipdb").set_trace()
                 # see ../robosuite/controllers/controller_factory.py
                 obs, reward, done, info = env.step(delta_action.tolist())
@@ -213,17 +210,14 @@ def eval_libero(args: Args) -> None:
             # Save a replay video of the episode
             suffix = "success" if done else "failure"
             task_segment = task_description.replace(" ", "_")
+            fname = f"rollout_{task_segment}_episode{episode_idx}_{suffix}.mp4"
             imageio.mimwrite(
-                pathlib.Path(args.video_out_path)
-                / f"rollout_{task_segment}_episode{episode_idx}_{suffix}.mp4",
+                video_dir / fname,
                 [np.asarray(x) for x in replay_images],
                 fps=10,
             )
             
             full_actions = np.stack(full_actions)
-            # np.save(pathlib.Path(args.video_out_path) / f"rollout_{task_segment}_episode{episode_idx}_{suffix}.npy", full_actions)
-            
-            # print(pathlib.Path(args.video_out_path) / f"rollout_{task_segment}_episode{episode_idx}_{suffix}.mp4")
             # Log current results
             logging.info(f"Success: {done}")
             logging.info(f"# episodes completed so far: {total_episodes}")
@@ -238,18 +232,36 @@ def eval_libero(args: Args) -> None:
         logging.info(
             f"Current total success rate: {float(total_successes) / float(total_episodes)}"
         )
-
+        eval_record.append(
+            {
+                "task_description": task_description,
+                "n_success": task_successes,
+                "n_episodes": task_episodes,
+                "success rate": float(task_successes) / float(task_episodes)
+            }
+        )
+        env.close()
     logging.info(
         f"Total success rate: {float(total_successes) / float(total_episodes)}"
     )
     logging.info(f"Total episodes: {total_episodes}")
+    eval_record.append(
+        {
+            "task_description": "Total",
+            "n_success": total_successes,
+            "n_episodes": total_episodes,
+            "success rate": float(total_successes) / float(total_episodes)
+        }
+    )
+    csv_path = Path(args.output_dir) / "eval_record.csv"
+    pd.DataFrame(eval_record).to_csv(csv_path, index=False)
 
 
 def _get_libero_env(task, resolution, seed):
     """Initializes and returns the LIBERO environment, along with the task description."""
     task_description = task.language
     task_bddl_file = (
-        pathlib.Path(get_libero_path("bddl_files"))
+        Path(get_libero_path("bddl_files"))
         / task.problem_folder
         / task.bddl_file
     )
