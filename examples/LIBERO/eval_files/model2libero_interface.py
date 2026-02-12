@@ -13,13 +13,10 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 
-from starVLA.model.tools import read_mode_config
-
 
 class ModelClient:
     def __init__(
         self,
-        policy_ckpt_path,
         unnorm_key: Optional[str] = None,
         policy_setup: str = "franka",
         horizon: int = 0,
@@ -59,8 +56,8 @@ class ModelClient:
             self.action_ensembler = None
         self.num_image_history = 0
 
-        self.action_norm_stats = self.get_action_stats(self.unnorm_key, policy_ckpt_path=policy_ckpt_path)
-        self.action_chunk_size = self.get_action_chunk_size(policy_ckpt_path=policy_ckpt_path)
+        self.action_norm_stats = self.get_action_stats(self.unnorm_key)
+        self.action_chunk_size = self.get_action_chunk_size()
         
 
     def _add_image_to_history(self, image: np.ndarray) -> None:
@@ -78,7 +75,6 @@ class ModelClient:
         self.gripper_action_repeat = 0
         self.sticky_gripper_action = 0.0
         self.previous_gripper_action = None
-
 
     def step(
         self, 
@@ -107,9 +103,9 @@ class ModelClient:
             "do_sample": False,
             "use_ddim": self.use_ddim,
             "num_ddim_steps": self.num_ddim_steps,
+            "type": "infer"
         }
         
-
         action_chunk_size = self.action_chunk_size
         if step % action_chunk_size == 0:
             response = self.client.predict_action(vla_input)
@@ -146,23 +142,19 @@ class ModelClient:
         
         return actions
 
-    @staticmethod
-    def get_action_stats(unnorm_key: str, policy_ckpt_path) -> dict:
+    def get_action_stats(self, unnorm_key: str) -> dict:
         """
         Duplicate stats accessor (retained for backward compatibility).
         """
-        policy_ckpt_path = Path(policy_ckpt_path)
-        model_config, norm_stats = read_mode_config(policy_ckpt_path)  # read config and norm_stats
-
+        input = {"type": "get_ckpt_config"}
+        _, norm_stats = self.client.get_ckpt_config(input)["data"]
         unnorm_key = ModelClient._check_unnorm_key(norm_stats, unnorm_key)
         return norm_stats[unnorm_key]["action"]
 
-    @staticmethod
-    def get_action_chunk_size(policy_ckpt_path):
-        model_config, _ = read_mode_config(policy_ckpt_path)  # read config and norm_stats
-        # import ipdb; ipdb.set_trace()
+    def get_action_chunk_size(self):
+        input = {"type": "get_ckpt_config"}
+        model_config, _ = self.client.get_ckpt_config(input)["data"]
         return model_config['framework']['action_model']['future_action_window_size'] + 1
-
 
     def _resize_image(self, image: np.ndarray) -> np.ndarray:
         image = cv.resize(image, tuple(self.image_size), interpolation=cv.INTER_AREA)

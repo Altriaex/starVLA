@@ -1,15 +1,19 @@
 # Copyright 2025 starVLA community. All rights reserved.
 # Licensed under the MIT License, Version 1.0 (the "License"); 
 # Implemented by [Jinhui YE / HKUST University] in [2025].
-
+import os
+import json
 import logging
 import socket
 import argparse
+from pathlib import Path
+
+from omegaconf import OmegaConf
+import torch
+
 from deployment.model_server.tools.websocket_policy_server import WebsocketPolicyServer
 from starVLA.model.framework.base_framework import baseframework
 from starVLA.training.trainer_utils.trainer_tools import get_device_name
-import torch, os
-
 
 def main(args) -> None:
     # Example usage:
@@ -20,10 +24,15 @@ def main(args) -> None:
     vla = baseframework.from_pretrained( # TODO should auto detect framework from model path
         args.ckpt_path,
     )
-
     if args.use_bf16: # False
         vla = vla.to(torch.bfloat16)
     vla = vla.to(get_device_name()).eval()
+
+    ckpt_root = Path(args.ckpt_path).parent.parent
+    ckpt_config = OmegaConf.load(ckpt_root / "config.yaml")
+    ckpt_config = OmegaConf.to_container(ckpt_config, resolve=True)
+    with open(ckpt_root / "dataset_statistics.json", "r") as f:
+        dataset_statistics = json.load(f)
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
@@ -32,6 +41,8 @@ def main(args) -> None:
     # start websocket server
     server = WebsocketPolicyServer(
         policy=vla,
+        ckpt_config=ckpt_config,
+        dataset_statistics=dataset_statistics,
         host="0.0.0.0",
         port=args.port,
         idle_timeout=args.idle_timeout,
@@ -39,7 +50,6 @@ def main(args) -> None:
     )
     logging.info("server running ...")
     server.serve_forever()
-
 
 def build_argparser():
     parser = argparse.ArgumentParser()

@@ -22,6 +22,8 @@ class WebsocketPolicyServer:
     def __init__(
         self,
         policy,
+        ckpt_config,
+        dataset_statistics,
         host: str = "0.0.0.0",
         port: int = 10093,
         idle_timeout: int = -1,  # 新增参数，单位秒，-1表示永不关闭
@@ -29,6 +31,8 @@ class WebsocketPolicyServer:
         
     ) -> None:
         self._policy = policy  #
+        self._ckpt_config = ckpt_config
+        self._dataset_statistics = dataset_statistics
         self._host = host
         self._port = port
         self._metadata = metadata or {}
@@ -101,6 +105,14 @@ class WebsocketPolicyServer:
         # ping
         if mtype == "ping":
             return {"status": "ok", "ok": True, "type": "ping", "request_id": req_id}
+        
+        elif mtype == "get_ckpt_config":
+            return {"status": "ok",
+                    "ok": True,
+                    "type": "ckpt_config",
+                    "request_id": req_id,
+                    "data": (self._ckpt_config, self._dataset_statistics)
+            }
 
         # infer --> framework.predict_action
         elif mtype == "infer" or mtype == "predict_action":
