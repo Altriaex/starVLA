@@ -43,7 +43,7 @@ from starVLA.model.framework.base_framework import baseframework
 from starVLA.model.modules.vlm import get_vlm_model
 from starVLA.model.modules.action_model.MLP_ActionHeader import get_action_model
 from starVLA.training.trainer_utils.trainer_tools import resize_images
-from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params
+from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params, get_device_name
 
 @FRAMEWORK_REGISTRY.register("QwenOFT")
 class Qwenvl_OFT(baseframework):
@@ -135,21 +135,32 @@ class Qwenvl_OFT(baseframework):
             last_hidden = qwenvl_outputs.hidden_states[-1]   # [B, L, H]
 
         # Step 4: Action Expert Forward and Loss
-        with torch.autocast(**adjust_autocast_params(device_type="cuda", dtype=torch.float32)):
-            # 提取动作 token embedding 作为动作预测查询
-            input_ids = qwen_inputs.get("input_ids", None)
-            action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)  # [B, chunk_len, H]
-            pred_actions = self.action_model.predict_action(action_queries)  # (B, chunk_len, action_dim)
+        if get_device_name()=="cuda":
+            with torch.autocast(device_type="cuda", dtype=torch.float32):
+                # 提取动作 token embedding 作为动作预测查询
+                input_ids = qwen_inputs.get("input_ids", None)
+                action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)  # [B, chunk_len, H]
+                pred_actions = self.action_model.predict_action(action_queries)  # (B, chunk_len, action_dim)
 
-            # 标签对齐：取最后 chunk_len 段
+                # 标签对齐：取最后 chunk_len 段
+                actions = torch.tensor(
+                    np.array(actions), device=pred_actions.device, dtype=pred_actions.dtype
+                )  # [B, T_full, action_dim]
+                actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
+
+                # 计算 L1 损失
+                action_loss = self.l1_loss(pred_actions, actions_target)
+        else:
+            input_ids = qwen_inputs.get("input_ids", None)
+            action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)
+            pred_actions = self.action_model.predict_action(action_queries)
             actions = torch.tensor(
-                np.array(actions), device=pred_actions.device, dtype=pred_actions.dtype
-            )  # [B, T_full, action_dim]
+                    np.array(actions), device=pred_actions.device, dtype=pred_actions.dtype
+                )  # [B, T_full, action_dim]
             actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
 
             # 计算 L1 损失
             action_loss = self.l1_loss(pred_actions, actions_target)
-
         return {"action_loss": action_loss}
 
     @torch.inference_mode()
@@ -196,12 +207,17 @@ class Qwenvl_OFT(baseframework):
             last_hidden = qwenvl_outputs.hidden_states[-1]   # [B, L, H]
 
         # Step 4: Action Expert Forward and Loss
-        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.float32)):
-            # 提取动作 token embedding 作为动作预测查询
+        if get_device_name()=="cuda":
+            with torch.autocast("cuda", dtype=torch.float32):
+                # 提取动作 token embedding 作为动作预测查询
+                input_ids = qwen_inputs.get("input_ids", None)
+                action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)  # [B, chunk_len, H]
+                pred_actions = self.action_model.predict_action(action_queries)  # (B, chunk_len, action_dim)
+        else:
             input_ids = qwen_inputs.get("input_ids", None)
-            action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id)  # [B, chunk_len, H]
-            pred_actions = self.action_model.predict_action(action_queries)  # (B, chunk_len, action_dim)
-
+            action_queries = self._gather_action_token_embeddings(last_hidden, input_ids, action_token_id=self.action_token_id).to(torch.bfloat16)
+            pred_actions = self.action_model.predict_action(action_queries)
+            pred_actions = pred_actions.to(torch.float32)
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
 

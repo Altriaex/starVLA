@@ -132,7 +132,7 @@ class Qwen_GR00T(baseframework):
                 action_loss = self.action_model(last_hidden_repeated, actions_target_repeated, state_repeated)  # (B, chunk_len, action_dim)
         else:
             # plat_form==npu    
-            last_hidden =  last_hidden.float()          
+            #last_hidden =  last_hidden.float()
             actions = torch.tensor(
                 np.array(actions),
                 device=last_hidden.device,
@@ -205,10 +205,10 @@ class Qwen_GR00T(baseframework):
             with torch.autocast("cuda", dtype=torch.float32):
                 pred_actions = self.action_model.predict_action(last_hidden, state)  # (B, chunk_len, action_dim)
         else:
-            state = state.float() if state is not None else None
-            last_hidden = last_hidden.float()
+            state = state.to(torch.bloat16) if state is not None else None
+            last_hidden = last_hidden.to(torch.bloat16)#.float()
             pred_actions = self.action_model.predict_action(last_hidden, state)
-
+            pred_actions = pred_actions.to(torch.float32)
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
 
