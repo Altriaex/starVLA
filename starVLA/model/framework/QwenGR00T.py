@@ -205,8 +205,8 @@ class Qwen_GR00T(baseframework):
             with torch.autocast("cuda", dtype=torch.float32):
                 pred_actions = self.action_model.predict_action(last_hidden, state)  # (B, chunk_len, action_dim)
         else:
-            state = state.to(torch.bloat16) if state is not None else None
-            last_hidden = last_hidden.to(torch.bloat16)#.float()
+            state = state.to(torch.bfloat16) if state is not None else None
+            last_hidden = last_hidden.to(torch.bfloat16)#.float()
             pred_actions = self.action_model.predict_action(last_hidden, state)
             pred_actions = pred_actions.to(torch.float32)
         normalized_actions = pred_actions.detach().cpu().numpy()
