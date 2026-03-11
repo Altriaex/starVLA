@@ -38,7 +38,7 @@ from starVLA.model.framework.base_framework import baseframework
 from starVLA.model.modules.vlm import get_vlm_model
 from starVLA.model.modules.action_model.GR00T_ActionHeader import get_action_model, FlowmatchingActionHead
 from starVLA.training.trainer_utils.trainer_tools import resize_images
-from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params
+from starVLA.training.trainer_utils.trainer_tools import adjust_autocast_params, get_device_name
 from starVLA.model.tools import FRAMEWORK_REGISTRY
 
 
@@ -109,9 +109,34 @@ class Qwen_GR00T(baseframework):
             last_hidden = qwenvl_outputs.hidden_states[-1]   # [B, L, H]
 
         # Step 4: Action Expert Forward and Loss
-        with torch.autocast(**adjust_autocast_params(device_type="cuda", dtype=torch.float32)):
+        if get_device_name()=="cuda":
+            with torch.autocast(device_type="cuda", dtype=torch.float32):
+                actions = torch.tensor(
+                    np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
+                )  # [B, T_full, action_dim]
+                actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
+
+                repeated_diffusion_steps = (
+                    self.config.trainer.get("repeated_diffusion_steps", 4) if self.config and self.config.trainer else 4
+                )
+                actions_target_repeated = actions_target.repeat(repeated_diffusion_steps, 1, 1)
+                last_hidden_repeated = last_hidden.repeat(repeated_diffusion_steps, 1, 1)
+                
+                state_repeated = None
+                if state is not None:
+                    state = torch.tensor(
+                        np.array(state), device=last_hidden.device, dtype=last_hidden.dtype
+                    )
+                    state_repeated = state.repeat(repeated_diffusion_steps, 1, 1)
+
+                action_loss = self.action_model(last_hidden_repeated, actions_target_repeated, state_repeated)  # (B, chunk_len, action_dim)
+        else:
+            # plat_form==npu    
+            #last_hidden =  last_hidden.float()
             actions = torch.tensor(
-                np.array(actions), device=last_hidden.device, dtype=last_hidden.dtype
+                np.array(actions),
+                device=last_hidden.device,
+                dtype=last_hidden.dtype
             )  # [B, T_full, action_dim]
             actions_target = actions[:, -(self.future_action_window_size+1):, :]  # (B, chunk_len, action_dim)
 
@@ -176,9 +201,14 @@ class Qwen_GR00T(baseframework):
         state = torch.from_numpy(np.array(state)).to(last_hidden.device, dtype=last_hidden.dtype) if state is not None else None
         
         # Step 4: Action Expert Forward
-        with torch.autocast(**adjust_autocast_params("cuda", dtype=torch.float32)):
-            pred_actions = self.action_model.predict_action(last_hidden, state)  # (B, chunk_len, action_dim)
-
+        if get_device_name()=="cuda":
+            with torch.autocast("cuda", dtype=torch.float32):
+                pred_actions = self.action_model.predict_action(last_hidden, state)  # (B, chunk_len, action_dim)
+        else:
+            state = state.to(torch.bfloat16) if state is not None else None
+            last_hidden = last_hidden.to(torch.bfloat16)#.float()
+            pred_actions = self.action_model.predict_action(last_hidden, state)
+            pred_actions = pred_actions.to(torch.float32)
         normalized_actions = pred_actions.detach().cpu().numpy()
         return {"normalized_actions": normalized_actions}
 

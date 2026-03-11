@@ -545,6 +545,6 @@ def get_device_name() -> str:
 def adjust_autocast_params(device_type, dtype):
     # On npu, Autocast only supports torch.float16, torch.bfloat16 currently.
     if is_npu_available:
-        return dict(device_type="npu", dtype=torch.float16 if not dtype==torch.bfloat16 else dtype)
+        return dict(device_type="npu", dtype=dtype)
     else:
         return dict(device_type=device_type, dtype=dtype)
