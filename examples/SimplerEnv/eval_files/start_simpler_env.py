@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+from pathlib import Path
 
 # from IPython import embed; embed()
 from examples.SimplerEnv.eval_files.custom_argparse import get_args
@@ -28,15 +30,43 @@ if __name__ == "__main__":
     if os.getenv("DEBUG", False):
         start_debugpy_once()
     model = ModelClient(
-        policy_ckpt_path=args.ckpt_path, # to get unnormalization stats
+        state_dir=args.state_dir,
         policy_setup=args.policy_setup,
+        host=args.host,
         port=args.port,
         action_scale=args.action_scale,
-        cfg_scale=1.5                  # cfg from 1.5 to 7 also performs well
+        cfg_scale=1.5
     )
 
     # policy model creation; update this if you are using a new policy model
     # run real-to-sim evaluation
     success_arr = maniskill2_evaluator(model, args)
+    logging_dir = Path(args.logging_dir)
+    logging_dir.mkdir(parents=True, exist_ok=True)
+    summary_log_path = logging_dir / "success_summary.log"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    repeat_idx = os.getenv("EVAL_REPEAT_IDX", "1")
+    repeat_total = os.getenv("EVAL_REPEAT_TOTAL", "1")
+    task_name = os.getenv("EVAL_TASK_NAME", "")
+    current_run = os.getenv("EVAL_CURRENT_RUN", "")
+    success_rate = float(np.mean(success_arr))
+    success_count = int(np.sum(success_arr))
+    success_items = ",".join(["1" if bool(item) else "0" for item in success_arr])
+    summary_line = (
+        f"[{timestamp}] "
+        f"run={current_run} "
+        f"repeat={repeat_idx}/{repeat_total} "
+        f"env={args.env_name} "
+        f"scene={args.scene_name} "
+        f"task={task_name} "
+        f"host={args.host} "
+        f"port={args.port} "
+        f"success={success_count}/{len(success_arr)} "
+        f"rate={success_rate:.6f} "
+        f"arr=[{success_items}]"
+    )
+    with summary_log_path.open("a", encoding="utf-8") as summary_log_file:
+        summary_log_file.write(summary_line + "\n")
+    print(f"Saved success summary to: {summary_log_path}")
     print(args)
-    print(" " * 10, "Average success", np.mean(success_arr))
+    print(" " * 10, "Average success", success_rate)

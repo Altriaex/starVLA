@@ -1,8 +1,8 @@
 #!/bin/bash
 # Check port availability ahead of time to prepare for parallel testing
 # Target port range
-start_port=5400
-end_port=5500
+start_port=6000
+end_port=6400
 
 echo "Checking whether ports ${start_port}-${end_port} are available..."
 

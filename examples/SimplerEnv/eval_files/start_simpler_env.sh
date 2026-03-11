@@ -2,8 +2,8 @@
 
 echo `which python`
 
-export sim_python=/mnt/petrelfs/share/yejinhui/Envs/miniconda3/envs/dinoact/bin/python
-export SimplerEnv_PATH=/mnt/petrelfs/share/yejinhui/Projects/SimplerEnv
+export sim_python=/opt/conda/bin/python
+export SimplerEnv_PATH=/root/SimplerEnv
 export PYTHONPATH=$(pwd):${PYTHONPATH}
 #### set environment variables #####
 
@@ -11,7 +11,7 @@ export PYTHONPATH=$(pwd):${PYTHONPATH}
 if [ -n "$1" ]; then
   MODEL_PATH="$1" # model path indict the output tree
 else
-  MODEL_PATH=./results/Checkpoints/1208_bridge_rt_1_Qwen3PI/final_model/pytorch_model.pt
+  MODEL_PATH=/root/vla/experiments/fractal_qwen3_vl_4b_oft_bfloat16_2026-02-26-10-00-28/checkpoints/steps_20000_pytorch_model.pt
 fi
 
 port=${2:-6678} # connect to your policy server port

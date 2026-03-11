@@ -19,7 +19,7 @@ from starVLA.model.tools import read_mode_config
 class ModelClient:
     def __init__(
         self,
-        policy_ckpt_path,
+        state_dir: Path,
         unnorm_key: Optional[str] = None,
         policy_setup: str = "widowx_bridge",
         horizon: int = 0,
@@ -71,6 +71,7 @@ class ModelClient:
 
         self.image_size = image_size
         self.action_scale = action_scale # 1.0
+        self.state_dir = Path(state_dir) if state_dir is not None else None
         self.horizon = horizon #0
         self.action_ensemble = action_ensemble
         self.adaptive_ensemble_alpha = adaptive_ensemble_alpha
@@ -88,7 +89,10 @@ class ModelClient:
             self.action_ensembler = None
         self.num_image_history = 0
 
-        self.action_norm_stats = self.get_action_stats(self.unnorm_key, policy_ckpt_path=policy_ckpt_path)
+        self.action_norm_stats = self.get_action_stats(
+            self.unnorm_key,
+            state_dir=self.state_dir,
+        )
         
 
     def _add_image_to_history(self, image: np.ndarray) -> None:
@@ -212,7 +216,7 @@ class ModelClient:
             action["gripper"] = 2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
         
         action["terminate_episode"] = np.array([0.0])
-        return raw_action, action
+        return raw_action, action, image
 
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
@@ -229,14 +233,33 @@ class ModelClient:
         return actions
 
     @staticmethod
-    def get_action_stats(unnorm_key: str, policy_ckpt_path) -> dict:
+    def get_action_stats(
+        unnorm_key: str,
+        state_dir: Optional[str] = None,
+    ) -> dict:
         """
-        Duplicate stats accessor (retained for backward compatibility).
+        Load action normalization stats from a local dataset_statistics.json file.
+        Priority:
+        1) unnorm_key
+        2) stats_dir (a directory containing dataset_statistics.json)
         """
-        policy_ckpt_path = Path(policy_ckpt_path)
-        model_config, norm_stats = read_mode_config(policy_ckpt_path)  # read config and norm_stats
+        if state_dir is None:
+            state_dir = os.environ.get("RUN_PATH") or os.environ.get("RUN_DIR")
+        if state_dir is None:
+            raise ValueError("state_dir is required to load dataset_statistics.json")
 
-        # unnorm_key = baseframework._check_unnorm_key(norm_stats, unnorm_key) # 其实也是很环境 specific 的
+        run_dir = Path(state_dir)
+
+        stats_path = run_dir / "dataset_statistics.json"
+        if not stats_path.exists():
+            raise FileNotFoundError(f"Missing dataset_statistics.json under '{run_dir}'.")
+
+        # read local dataset statistics
+        import json  # local import to limit module scope
+
+        with open(stats_path, "r", encoding="utf-8") as f:
+            norm_stats = json.load(f)
+
         return norm_stats[unnorm_key]["action"]
 
 
