@@ -28,8 +28,7 @@ def get_args():
         default="google_robot",
         help="Policy model setup; e.g., 'google_robot', 'widowx_bridge'",
     )
-    parser.add_argument("--state-dir", type=str, default=None)
-    parser.add_argument("--ckpt-path", type=str, default=None)
+    # parser.add_argument("--ckpt-path", type=str, default=None)
     parser.add_argument("--env-name", type=str, required=True)
     parser.add_argument(
         "--additional-env-save-tags",
@@ -113,7 +112,7 @@ def get_args():
         "Note that the quotation marks are necessary and that no white space "
         "is allowed.",
     )
-    parser.add_argument("--logging-dir", type=str, default="./results")
+    parser.add_argument("--output-dir", type=str)
     parser.add_argument("--tf-memory-limit", type=int, default=3072, help="Tensorflow memory limit")
     parser.add_argument("--octo-init-rng", type=int, default=0, help="Octo init rng seed")
     parser.add_argument("--async-freq", type=int, default=1)
@@ -141,5 +140,6 @@ def get_args():
             args.additional_env_save_tags = f"obs_camera_{args.obs_camera_name}"
         else:
             args.additional_env_save_tags = args.additional_env_save_tags + f"_obs_camera_{args.obs_camera_name}"
-
+    args.ckpt_path = args.output_dir
+    args.logging_dir = args.output_dir
     return args

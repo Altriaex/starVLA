@@ -30,20 +30,18 @@ if __name__ == "__main__":
     if os.getenv("DEBUG", False):
         start_debugpy_once()
     model = ModelClient(
-        state_dir=args.state_dir,
         policy_setup=args.policy_setup,
         host=args.host,
         port=args.port,
         action_scale=args.action_scale,
-        cfg_scale=1.5
     )
 
     # policy model creation; update this if you are using a new policy model
     # run real-to-sim evaluation
     success_arr = maniskill2_evaluator(model, args)
-    logging_dir = Path(args.logging_dir)
-    logging_dir.mkdir(parents=True, exist_ok=True)
-    summary_log_path = logging_dir / "success_summary.log"
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_log_path = output_dir / "success_summary.log"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     repeat_idx = os.getenv("EVAL_REPEAT_IDX", "1")
     repeat_total = os.getenv("EVAL_REPEAT_TOTAL", "1")

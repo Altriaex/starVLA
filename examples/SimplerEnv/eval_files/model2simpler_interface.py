@@ -19,17 +19,15 @@ from starVLA.model.tools import read_mode_config
 class ModelClient:
     def __init__(
         self,
-        state_dir: Path,
         unnorm_key: Optional[str] = None,
         policy_setup: str = "widowx_bridge",
         horizon: int = 0,
+        action_ensemble = True,
         action_ensemble_horizon: Optional[int] = None,
         image_size: list[int] = [224, 224],
         action_scale: float = 1.0,
-        cfg_scale: float = 1.5,
         use_ddim: bool = True,
         num_ddim_steps: int = 10,
-        action_ensemble = True,
         adaptive_ensemble_alpha = 0.1,
         host="0.0.0.0",
         port=10093,
@@ -65,13 +63,9 @@ class ModelClient:
         print(f"*** policy_setup: {policy_setup}, unnorm_key: {unnorm_key} ***")
         self.use_ddim = use_ddim
         self.num_ddim_steps = num_ddim_steps
-
-
-        self.cfg_scale = cfg_scale # 1.5
-
         self.image_size = image_size
         self.action_scale = action_scale # 1.0
-        self.state_dir = Path(state_dir) if state_dir is not None else None
+        #self.state_dir = Path(state_dir) if state_dir is not None else None
         self.horizon = horizon #0
         self.action_ensemble = action_ensemble
         self.adaptive_ensemble_alpha = adaptive_ensemble_alpha
@@ -89,10 +83,7 @@ class ModelClient:
             self.action_ensembler = None
         self.num_image_history = 0
 
-        self.action_norm_stats = self.get_action_stats(
-            self.unnorm_key,
-            state_dir=self.state_dir,
-        )
+        self.action_norm_stats = self.get_action_stats(self.unnorm_key)
         
 
     def _add_image_to_history(self, image: np.ndarray) -> None:
@@ -112,7 +103,11 @@ class ModelClient:
         self.previous_gripper_action = None
 
     def step(
-        self, image: np.ndarray, task_description: Optional[str] = None, *args, **kwargs
+        self,
+        image: np.ndarray,
+        task_description: Optional[str] = None,
+        *args,
+        **kwargs
     ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Input:
@@ -139,20 +134,13 @@ class ModelClient:
             "image": [image],
             "lang": self.task_description,
         }
-        
-        vla_input = {
-            "examples": [example],
-            "do_sample": False,
-            "cfg_scale": self.cfg_scale,
-            "use_ddim": self.use_ddim,
-            "num_ddim_steps": self.num_ddim_steps,
-        }
 
         vla_input = {
             "examples": [example],
             "do_sample": False,
             "use_ddim": self.use_ddim,
             "num_ddim_steps": self.num_ddim_steps,
+            "type": "infer"
         }
         
    
@@ -216,7 +204,7 @@ class ModelClient:
             action["gripper"] = 2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
         
         action["terminate_episode"] = np.array([0.0])
-        return raw_action, action, image
+        return raw_action, action
 
     @staticmethod
     def unnormalize_actions(normalized_actions: np.ndarray, action_norm_stats: Dict[str, np.ndarray]) -> np.ndarray:
@@ -232,37 +220,14 @@ class ModelClient:
         
         return actions
 
-    @staticmethod
-    def get_action_stats(
-        unnorm_key: str,
-        state_dir: Optional[str] = None,
-    ) -> dict:
+    def get_action_stats(self, unnorm_key: str) -> dict:
         """
-        Load action normalization stats from a local dataset_statistics.json file.
-        Priority:
-        1) unnorm_key
-        2) stats_dir (a directory containing dataset_statistics.json)
+        Duplicate stats accessor (retained for backward compatibility).
         """
-        if state_dir is None:
-            state_dir = os.environ.get("RUN_PATH") or os.environ.get("RUN_DIR")
-        if state_dir is None:
-            raise ValueError("state_dir is required to load dataset_statistics.json")
-
-        run_dir = Path(state_dir)
-
-        stats_path = run_dir / "dataset_statistics.json"
-        if not stats_path.exists():
-            raise FileNotFoundError(f"Missing dataset_statistics.json under '{run_dir}'.")
-
-        # read local dataset statistics
-        import json  # local import to limit module scope
-
-        with open(stats_path, "r", encoding="utf-8") as f:
-            norm_stats = json.load(f)
-
+        input = {"type": "get_ckpt_config"}
+        _, norm_stats = self.client.get_ckpt_config(input)["data"]
+        unnorm_key = ModelClient._check_unnorm_key(norm_stats, unnorm_key)
         return norm_stats[unnorm_key]["action"]
-
-
 
     def _resize_image(self, image: np.ndarray) -> np.ndarray:
         image = cv.resize(image, tuple(self.image_size), interpolation=cv.INTER_AREA)
@@ -299,3 +264,23 @@ class ModelClient:
         axs["image"].set_xlabel("Time in one episode (subsampled)")
         plt.legend()
         plt.savefig(save_path)
+
+    @staticmethod
+    def _check_unnorm_key(norm_stats, unnorm_key):
+        """
+        Duplicate helper (retained for backward compatibility).
+        See primary _check_unnorm_key above.
+        """
+        if unnorm_key is None:
+            assert len(norm_stats) == 1, (
+                f"Your model was trained on more than one dataset, "
+                f"please pass a `unnorm_key` from the following options to choose the statistics "
+                f"used for un-normalizing actions: {norm_stats.keys()}"
+            )
+            unnorm_key = next(iter(norm_stats.keys()))
+
+        assert unnorm_key in norm_stats, (
+            f"The `unnorm_key` you chose is not in the set of available dataset statistics, "
+            f"please choose from: {norm_stats.keys()}"
+        )
+        return unnorm_key
