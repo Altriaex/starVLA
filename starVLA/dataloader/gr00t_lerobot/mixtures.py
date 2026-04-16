@@ -37,6 +37,23 @@ DATASET_NAMED_MIXTURES = {
         ("bridge_orig_lerobot", 1.0, "oxe_bridge"),
         ("fractal20220817_data_lerobot", 1.0, "oxe_rt1"),
     ],
+    "calvin_task_D_D": [
+        ("task_D_D", 1.0, "libero_franka"),
+    ],
+    "calvin_task_ABC_D": [
+        ("task_ABC_D", 1.0, "libero_franka"),
+    ],
+    "libero_mem": [
+        ("libero_mem_lerobot_v2.1", 1.0, "libero_franka"),
+    ],
+    "RoboCerebra_all": [
+        ("Ideal", 1.0, "libero_franka"),
+        ("Memory_Execution", 1.0, "libero_franka"),
+        ("Memory_Exploration", 1.0, "libero_franka"),
+        ("Mix", 1.0, "libero_franka"),
+        ("Observation_Mismatching", 1.0, "libero_franka"),
+        ("Random_Disturbance", 1.0, "libero_franka"),
+    ],
 
     "demo_sim_pick_place": [
         ("sim_pick_place", 1.0, "demo_sim_franka_delta_joints"),
