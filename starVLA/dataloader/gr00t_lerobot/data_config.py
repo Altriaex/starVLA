@@ -511,7 +511,14 @@ class Libero4in1DataConfig:
 
         return ComposedModalityTransform(transforms=transforms)
 
-###########################################################################################
+
+class LiberoTrace4in1DataConfig(Libero4in1DataConfig):
+    video_keys = [
+        "video.primary_image",
+        "video.primary_image_trace",
+        "video.wrist_image",
+        "video.wrist_image_trace",
+    ]
 
 
 class SingleFrankaRobotiqDeltaJointsDataConfig:
@@ -907,6 +914,7 @@ class AgilexDataConfig:
 
 ROBOT_TYPE_CONFIG_MAP = {
     "libero_franka": Libero4in1DataConfig(),
+    "libero_franka_trace": LiberoTrace4in1DataConfig(),
     "oxe_droid": OxeDroidDataConfig(),
     "oxe_bridge": OxeBridgeDataConfig(),
     "oxe_rt1": OxeRT1DataConfig(),
@@ -918,4 +926,3 @@ ROBOT_TYPE_CONFIG_MAP = {
     
     "custom_robot_config": SingleFrankaRobotiqDeltaEefDataConfig(),
 }
-

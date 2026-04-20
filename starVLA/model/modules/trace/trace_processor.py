@@ -58,9 +58,14 @@ class TraceProcessor:
         self.traced = False
         self.trace_buffer: np.ndarray | None = None
         self.image_buffer: deque[np.ndarray] = deque(maxlen=self.buffer_size)
+        self.mask_buffer: deque[np.ndarray | None] = deque(maxlen=self.buffer_size)
         self.last_trace_step = 0
 
-    def process_image(self, image: Image.Image | np.ndarray) -> dict[str, Any]:
+    def process_image(
+        self,
+        image: Image.Image | np.ndarray,
+        mask: np.ndarray | None = None,
+    ) -> dict[str, Any]:
         source_image = self._coerce_image(image)
         self.step += 1
 
@@ -68,6 +73,14 @@ class TraceProcessor:
         # image_array: [H, W, 3] -> [1, 3, H, W]
         image_tensor = np.ascontiguousarray(image_array.transpose(2, 0, 1))[None, :]
         self.image_buffer.append(image_tensor)
+
+        if mask is not None:
+            target_height, target_width = self.target_size
+            if mask.shape != (target_height, target_width):
+                pil_mask = Image.fromarray(mask.astype(np.uint8) * 255)
+                pil_mask = pil_mask.resize((target_width, target_height), resample=Image.Resampling.NEAREST)
+                mask = np.asarray(pil_mask, dtype=bool)
+        self.mask_buffer.append(mask)
 
         if self.step < self.begin_track_step:
             self.traced = False
@@ -159,11 +172,33 @@ class TraceProcessor:
         video = np.concatenate(list(self.image_buffer), axis=0)
         # video: [T, 3, H, W] -> [1, T, 3, H, W]
         video_tensor = self.torch.from_numpy(video).unsqueeze(0).float().to(device=self.device)
-        with self.torch.no_grad():
-            pred_tracks, _ = self.cotracker_model(video_tensor, grid_size=self.grid_size)
 
         frame_height = video.shape[2]
         frame_width = video.shape[3]
+
+        mask = self.mask_buffer[0] if len(self.mask_buffer) > 0 else None
+        use_mask = mask is not None and np.count_nonzero(mask) >= self.num_points * 2
+
+        if use_mask:
+            # Sample queries from within the mask instead of a dense grid.
+            ys, xs = np.where(mask)
+            num_queries = self.grid_size * self.grid_size
+            if len(xs) < num_queries:
+                idx = np.random.choice(len(xs), size=num_queries, replace=True)
+            else:
+                idx = np.random.choice(len(xs), size=num_queries, replace=False)
+            queries = np.stack([
+                np.zeros(num_queries, dtype=np.float32),
+                xs[idx].astype(np.float32),
+                ys[idx].astype(np.float32),
+            ], axis=1)[None, :]  # [1, N, 3]
+            queries_tensor = self.torch.from_numpy(queries).float().to(device=self.device)
+            with self.torch.no_grad():
+                pred_tracks, _ = self.cotracker_model(video_tensor, queries=queries_tensor)
+        else:
+            with self.torch.no_grad():
+                pred_tracks, _ = self.cotracker_model(video_tensor, grid_size=self.grid_size)
+
         trace = self._filter_points(pred_tracks[0].cpu().numpy(), (frame_height, frame_width))
         distance = np.mean(np.sum(np.abs(trace[1:] - trace[:-1]), axis=-1), axis=0)
         active_ids = np.where(distance > self.min_active_distance)[0]
