@@ -14,63 +14,7 @@ from starVLA.dataloader.gr00t_lerobot.datasets import (
     safe_hash,
 )
 from starVLA.dataloader.gr00t_lerobot.embodiment_tags import ROBOT_TYPE_TO_EMBODIMENT_TAG
-
-
-def build_trace_aware_prompt(
-    task_description: str,
-    video_keys: list[str],
-    trace_video_pairs: list[tuple[str, str]],
-    trace_validity: list[bool],
-) -> str:
-    """Generate a trace-aware prompt from the current video layout and final route validity."""
-    normalized_task = task_description.strip()
-    if not normalized_task:
-        raise ValueError("task_description must be non-empty")
-
-    ordinal_labels = [
-        "first",
-        "second",
-        "third",
-        "fourth",
-        "fifth",
-        "sixth",
-        "seventh",
-        "eighth",
-    ]
-    video_index_by_key = {video_key: video_index for video_index, video_key in enumerate(video_keys)}
-
-    prompt_parts = []
-    # Describe each base/trace pair using its actual position in the current video layout.
-    for is_valid, (base_video_key, trace_video_key) in zip(trace_validity, trace_video_pairs, strict=True):
-        base_video_index = video_index_by_key[base_video_key]
-        trace_video_index = video_index_by_key[trace_video_key]
-        base_image_label = (
-            ordinal_labels[base_video_index] if base_video_index < len(ordinal_labels) else f"{base_video_index + 1}th"
-        )
-        trace_image_label = (
-            ordinal_labels[trace_video_index]
-            if trace_video_index < len(ordinal_labels)
-            else f"{trace_video_index + 1}th"
-        )
-        camera_label = base_video_key.removeprefix("video.")
-        if camera_label.endswith("_image"):
-            camera_label = camera_label.removesuffix("_image")
-        camera_label = camera_label.replace("_", " ")
-
-        if is_valid:
-            prompt_parts.append(
-                f"The {base_image_label} image shows the original robot observation from the {camera_label} camera, "
-                f"and the {trace_image_label} image shows the same {camera_label} view marked with historical movements "
-                "of the robot end effector and moving objects."
-            )
-        else:
-            prompt_parts.append(
-                f"The {base_image_label} image and the {trace_image_label} image show the current robot observation "
-                f"from the {camera_label} camera."
-            )
-
-    prompt_parts.append(f"What action should the robot take to {normalized_task}?")
-    return " ".join(prompt_parts)
+from starVLA.model.modules.trace.trace_processor import build_trace_aware_prompt
 
 
 class LeRobotSingleTraceDataset(LeRobotSingleDataset):
@@ -216,9 +160,9 @@ class LeRobotSingleTraceDataset(LeRobotSingleDataset):
 
 
 if __name__ == "__main__":
-    # Parse the fixed step-1 acceptance arguments.
+    # Parse the fixed step-2 acceptance arguments.
     parser = argparse.ArgumentParser(
-        description="4.5 step-1 acceptance entry for LeRobotSingleTraceDataset."
+        description="4.5 step-2 acceptance entry for LeRobotSingleTraceDataset."
     )
     parser.add_argument("--data-root-dir", required=True)
     parser.add_argument("--data-mix", required=True)
@@ -228,7 +172,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    # Validate the fixed step-1 acceptance boundary.
+    # Validate the fixed step-2 acceptance boundary.
     data_root_dir = Path(args.data_root_dir)
     if not data_root_dir.is_absolute():
         raise ValueError(f"--data-root-dir must be an absolute path: {data_root_dir}")
@@ -244,7 +188,7 @@ if __name__ == "__main__":
 
     if args.data_mix != "libero_trace_all":
         raise ValueError(
-            "trace_datasets.py __main__ is only the 4.5 step-1 acceptance entry and therefore "
+            "trace_datasets.py __main__ is only the 4.5 step-2 acceptance entry and therefore "
             f"only supports 'libero_trace_all', got {args.data_mix!r}"
         )
 
@@ -254,7 +198,7 @@ if __name__ == "__main__":
     if not (dataset_path / "meta/info.json").exists():
         raise FileNotFoundError(f"Traced dataset metadata is missing under {dataset_path}")
 
-    # Build the fixed four-view single dataset for step-1 acceptance only.
+    # Build the fixed four-view single dataset for step-2 acceptance only.
     expected_four_view_image_keys = [
         "video.primary_image",
         "video.primary_image_trace",

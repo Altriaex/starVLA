@@ -4,10 +4,95 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
-import mediapy as media
 import numpy as np
 from PIL import Image, ImageDraw
+
+
+def build_trace_aware_prompt(
+    task_description: str,
+    video_keys: list[str],
+    trace_video_pairs: list[tuple[str, str]],
+    trace_validity: list[bool],
+) -> str:
+    """Build the shared trace-aware language prompt for one four-view sample.
+
+    Args:
+        task_description: Natural-language task text for the current sample, such as
+            ``"open the middle drawer of the cabinet"``. This text is appended to the
+            final question sentence and should describe the robot task itself rather
+            than any trace metadata.
+        video_keys: Ordered video field names used by the caller for the current
+            model input. The order here is treated as the formal view order when
+            generating prompt text such as ``"the first image"`` and
+            ``"the second image"``. For TraceVLA this is typically
+            ``[base_view, base_view_trace, wrist_view, wrist_view_trace]``.
+        trace_video_pairs: Ordered ``(base_video_key, trace_video_key)`` pairs
+            describing which trace image belongs to which original camera view.
+            Each key in every pair must appear in ``video_keys``. The pair order
+            defines the order in which per-route descriptions are written into the
+            prompt.
+        trace_validity: Final per-route trace status after all upstream processing
+            such as runtime trace generation or training-side trace dropout. Its
+            length must match ``trace_video_pairs``. ``True`` means the trace image
+            for that route should be described as containing historical motion
+            traces; ``False`` means that route should be described as the non-trace
+            fallback where both images show the current observation.
+
+    Returns:
+        A single prompt string that describes each base/trace route in the caller's
+        formal image order and ends with the task question for action prediction.
+    """
+    normalized_task = task_description.strip()
+
+    video_index_by_key = {video_key: video_index for video_index, video_key in enumerate(video_keys)}
+    ordinal_labels = [
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "sixth",
+        "seventh",
+        "eighth",
+    ]
+
+    prompt_parts: list[str] = []
+    for (base_video_key, trace_video_key), is_valid in zip(trace_video_pairs, trace_validity, strict=True):
+        if base_video_key not in video_index_by_key:
+            raise ValueError(f"Unknown base video key in trace route: {base_video_key}")
+        if trace_video_key not in video_index_by_key:
+            raise ValueError(f"Unknown trace video key in trace route: {trace_video_key}")
+
+        base_video_index = video_index_by_key[base_video_key]
+        trace_video_index = video_index_by_key[trace_video_key]
+        base_image_label = (
+            ordinal_labels[base_video_index] if base_video_index < len(ordinal_labels) else f"{base_video_index + 1}th"
+        )
+        trace_image_label = (
+            ordinal_labels[trace_video_index]
+            if trace_video_index < len(ordinal_labels)
+            else f"{trace_video_index + 1}th"
+        )
+
+        camera_label = base_video_key.removeprefix("video.")
+        if camera_label.endswith("_image"):
+            camera_label = camera_label.removesuffix("_image")
+        camera_label = camera_label.replace("_", " ")
+
+        if is_valid:
+            prompt_parts.append(
+                f"The {base_image_label} image shows the original robot observation from the {camera_label} camera, "
+                f"and the {trace_image_label} image shows the same {camera_label} view marked with historical movements "
+                "of the robot end effector and moving objects."
+            )
+        else:
+            prompt_parts.append(
+                f"The {base_image_label} image and the {trace_image_label} image show the current robot observation "
+                f"from the {camera_label} camera."
+            )
+
+    prompt_parts.append(f"What action should the robot take to {normalized_task}?")
+    return " ".join(prompt_parts)
 
 
 class TraceProcessor:
@@ -237,6 +322,8 @@ class TraceProcessor:
         return trace[:, valid_points_mask, :]
 
     def _visualize_trace(self, image: Image.Image, trace: np.ndarray) -> Image.Image:
+        import matplotlib.pyplot as plt
+
         if trace.shape[0] < 2 or trace.shape[1] == 0:
             return image
 
@@ -277,6 +364,8 @@ class TraceProcessor:
         return image
 
 def main() -> None:
+    import mediapy as media
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--video_path", required=True)
     parser.add_argument("--output_path", required=True)
