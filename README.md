@@ -1,7 +1,14 @@
 # StarVLA: A Lego-like Codebase for Vision-Language-Action Model Developing
+Collecting, integrating, and exploring cutting-edge technologies for generalist robots.
 
 <!-- [![Update](https://img.shields.io/badge/UPDATE-Scripts%20fixed%20%7C%20Packaging%20smoother-red?style=for-the-badge)](https://github.com/starVLA/starVLA) -->
 [![Model & Data on Hugging Face](https://img.shields.io/badge/HuggingFace-Model%20%26%20Data-orange?style=for-the-badge&logo=huggingface)](https://huggingface.co/StarVLA) [![WeChat](https://img.shields.io/badge/WeChat-加入讨论群-brightgreen?style=for-the-badge&logo=wechat)](https://github.com/starVLA/starVLA/issues/64#issuecomment-3715403845)
+
+**[2026/03/03]** 🔥 We now support [**Qwen3.5** as a backbone for VLA](https://github.com/starVLA/starVLA/pull/172) — the fastest integration in the community ⚡  
+With more model size options: **0.8B, 2B, 4B, and 9B**! Build your VLA flexibly on top of native multimodal models! 
+
+**[2026/01/29]** 🔥 StarVLA [Training Efficiency Report](https://github.com/starVLA/starVLA/issues/158) & [Training Curves](https://github.com/starVLA/starVLA/issues/68) released!
+Training configs and efficiency benchmarks for community reference.
 
 **[2026/01/29]** Calvin benchmark experiments were conducted by the UNT team. For inquiries, please contact Zhijie Song (1600013008@pku.edu.cn) or Feng Yan (bphengyan@163.com).
 
@@ -44,8 +51,9 @@ In StarVLA (also a pun on “start VLA” ),  each functional component (model, 
 
 **TwinBrainVLA**: [*TwinBrainVLA: Unleashing the Potential of Generalist VLMs for Embodied Tasks via Asymmetric Mixture-of-Transformers*](https://github.com/ZGC-EmbodyAI/TwinBrainVLA)
 
-**BayesianVLA**: [*BayesianVLA: Bayesian Decomposition of Vision Language Action Models via Latent Action Queries*](https://github.com/ZGC-EmbodyAI/BayesianVLA)
+**LangForce**: [*LangForce: Bayesian Decomposition of Vision Language Action Models via Latent Action Queries*](https://github.com/ZGC-EmbodyAI/LangForce)
 
+**ABot-M0**: [*ABot-M0: VLA Foundation Model for Robotic Manipulation with Action Manifold Learning*](https://github.com/amap-cvlab/ABot-Manipulation)
 
 ## 🔥 Key Features
 
@@ -140,6 +148,7 @@ We release a series of modified models and finetuning checkpoints to facilitate 
 
 - [x] **SimplerEnV**
 - [x] **LIBERO**
+- [x] **LIBERO-plus**
 - [x] **Robocasa**
 - [x] **RoboTwin**
 - [x] **BEHAVIOR**
