@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 import time
 import pandas as pd
@@ -20,6 +21,72 @@ from model_interface import ModelClient
 
 LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
 LIBERO_ENV_RESOLUTION = 256  # resolution used to render training data
+
+
+def _scan_existing_results(video_dir: Path) -> dict[str, dict[int, str]]:
+    """Scan video directory and return completed episodes.
+
+    Parses filenames like rollout_{task_segment}_episode{idx}_{suffix}.mp4
+    and returns {task_segment: {episode_idx: suffix}}. When multiple suffixes
+    exist for the same episode, the one with the latest mtime wins.
+    """
+    pattern = re.compile(r"^rollout_(.+)_episode(\d+)_(success|failure)\.mp4$")
+    results: dict[str, dict[int, tuple[str, float]]] = {}
+    if not video_dir.exists():
+        return {}
+    for fpath in video_dir.iterdir():
+        if not fpath.is_file() or fpath.suffix != ".mp4":
+            continue
+        m = pattern.match(fpath.name)
+        if not m:
+            continue
+        task_segment = m.group(1)
+        episode_idx = int(m.group(2))
+        suffix = m.group(3)
+        mtime = fpath.stat().st_mtime
+        task_dict = results.setdefault(task_segment, {})
+        if episode_idx not in task_dict or mtime > task_dict[episode_idx][1]:
+            task_dict[episode_idx] = (suffix, mtime)
+    return {task: {idx: info[0] for idx, info in episodes.items()} for task, episodes in results.items()}
+
+
+def _build_eval_record_from_videos(video_dir: Path, task_order: list[str]) -> list[dict]:
+    """Reconstruct eval_record from existing video files.
+
+    task_order is a list of task_descriptions; their order determines the CSV row order.
+    """
+    existing = _scan_existing_results(video_dir)
+    eval_record = []
+    total_successes = 0
+    total_episodes = 0
+    for task_desc in task_order:
+        task_segment = task_desc.replace(" ", "_")
+        episodes = existing.get(task_segment, {})
+        n_episodes = len(episodes)
+        n_success = sum(1 for s in episodes.values() if s == "success")
+        total_successes += n_success
+        total_episodes += n_episodes
+        if n_episodes > 0:
+            eval_record.append(
+                {
+                    "task_description": task_desc,
+                    "n_success": n_success,
+                    "n_episodes": n_episodes,
+                    "success rate": float(n_success) / float(n_episodes),
+                }
+            )
+    if total_episodes > 0:
+        eval_record.append(
+            {
+                "task_description": "Total",
+                "n_success": total_successes,
+                "n_episodes": total_episodes,
+                "success rate": float(total_successes) / float(total_episodes),
+            }
+        )
+    return eval_record
+
+
 def _binarize_gripper_open(open_val: np.ndarray | float) -> np.ndarray:
     arr = np.asarray(open_val, dtype=np.float32).reshape(-1)
     v = float(arr[0])
@@ -91,9 +158,16 @@ def eval_libero(args: Args) -> None:
         trace_device=args.trace_device,
     )
 
+    # Scan existing results for resume
+    existing_results = _scan_existing_results(video_dir)
+    if existing_results:
+        total_existing = sum(len(v) for v in existing_results.values())
+        logging.info(f"[resume] Found {total_existing} existing episode results in {video_dir}")
+
     eval_record = []
     # Start evaluation
     total_episodes, total_successes = 0, 0
+    task_order = []
     for task_id in tqdm.tqdm(range(num_tasks_in_suite)):
         # Get task
         task = task_suite.get_task(task_id)
@@ -103,10 +177,26 @@ def eval_libero(args: Args) -> None:
 
         # Initialize LIBERO environment and task description
         env, task_description = _get_libero_env(task, LIBERO_ENV_RESOLUTION, args.seed)
+        task_order.append(task_description)
+        task_segment = task_description.replace(" ", "_")
 
         # Start episodes
         task_episodes, task_successes = 0, 0
+        # Pre-load statistics from existing results for this task
+        pre_existing = existing_results.get(task_segment, {})
+        for suffix in pre_existing.values():
+            task_episodes += 1
+            total_episodes += 1
+            if suffix == "success":
+                task_successes += 1
+                total_successes += 1
+
         for episode_idx in tqdm.tqdm(range(args.num_trials_per_task)):
+            # Skip if this episode was already evaluated
+            if episode_idx in pre_existing:
+                logging.info(f"[skip] {task_segment} episode {episode_idx} already done ({pre_existing[episode_idx]})")
+                continue
+
             logging.info(f"\nTask: {task_description}")
 
             # Reset environment
@@ -217,7 +307,6 @@ def eval_libero(args: Args) -> None:
 
             # Save a replay video of the episode
             suffix = "success" if done else "failure"
-            task_segment = task_description.replace(" ", "_")
             video_stem = f"rollout_{task_segment}_episode{episode_idx}_{suffix}"
             fname = f"{video_stem}.mp4"
             primary_trace_fname = f"{video_stem}_primary_trace.mp4"
@@ -247,33 +336,29 @@ def eval_libero(args: Args) -> None:
             )
 
         # Log final results
-        logging.info(
-            f"Current task success rate: {float(task_successes) / float(task_episodes)}"
-        )
-        logging.info(
-            f"Current total success rate: {float(total_successes) / float(total_episodes)}"
-        )
-        eval_record.append(
-            {
-                "task_description": task_description,
-                "n_success": task_successes,
-                "n_episodes": task_episodes,
-                "success rate": float(task_successes) / float(task_episodes)
-            }
-        )
+        if task_episodes > 0:
+            logging.info(
+                f"Current task success rate: {float(task_successes) / float(task_episodes)}"
+            )
+            logging.info(
+                f"Current total success rate: {float(total_successes) / float(total_episodes)}"
+            )
+            eval_record.append(
+                {
+                    "task_description": task_description,
+                    "n_success": task_successes,
+                    "n_episodes": task_episodes,
+                    "success rate": float(task_successes) / float(task_episodes)
+                }
+            )
         env.close()
-    logging.info(
-        f"Total success rate: {float(total_successes) / float(total_episodes)}"
-    )
+    if total_episodes > 0:
+        logging.info(
+            f"Total success rate: {float(total_successes) / float(total_episodes)}"
+        )
     logging.info(f"Total episodes: {total_episodes}")
-    eval_record.append(
-        {
-            "task_description": "Total",
-            "n_success": total_successes,
-            "n_episodes": total_episodes,
-            "success rate": float(total_successes) / float(total_episodes)
-        }
-    )
+    # Rebuild eval_record from videos to guarantee consistency after resume
+    eval_record = _build_eval_record_from_videos(video_dir, task_order)
     csv_path = Path(args.output_dir) / "eval_record.csv"
     pd.DataFrame(eval_record).to_csv(csv_path, index=False)
 
